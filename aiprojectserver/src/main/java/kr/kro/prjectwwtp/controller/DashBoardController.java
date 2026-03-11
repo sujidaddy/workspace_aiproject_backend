@@ -553,16 +553,14 @@ public class DashBoardController {
 				List<TmsPredict> tmsList = tmsService.findPredictList(now, end);
 				List<FlowPredict> flowList = flowService.findPredictList(now, end);
 
-				String html = mailService.reportChart(tmsList, flowList);
-				String fileName = "chart" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".html";
-				
 				String subject = "Report From FlowWater";
 				String body = mailService.reportBody(recvMember);
 				
-				mailService.sendEmailWithAttachment(recvMember, subject, body, html, fileName);
+				// CID 방식으로 차트 이미지를 메일에 포함시켜 전송
+				mailService.sendEmailWithChartAsCID(recvMember, subject, body, tmsList, flowList);
 			}catch(Exception e) {
 				e.printStackTrace();
-				logService.addErrorLog("MemberController.java", "makeReportMessage()", e.getMessage());
+				logService.addErrorLog("DashBoardController.java", "postSendReportTo()", e.getMessage());
 			}
 		}
 		catch(Exception e) {

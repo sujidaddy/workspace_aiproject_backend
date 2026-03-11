@@ -140,6 +140,17 @@
 		    <artifactId>sendgrid-java</artifactId>
 		    <version>4.10.2</version>
 		</dependency>
+		<!-- SVG to Image conversion -->
+		<dependency>
+		    <groupId>org.apache.xmlgraphics</groupId>
+		    <artifactId>batik-transcoder</artifactId>
+		    <version>1.17</version>
+		</dependency>
+		<dependency>
+		    <groupId>org.apache.xmlgraphics</groupId>
+		    <artifactId>batik-codec</artifactId>
+		    <version>1.17</version>
+		</dependency>
 <!--	    <dependency>-->
 <!--	        <groupId>net.coobird</groupId>-->
 <!--	        <artifactId>thumbnailator</artifactId>-->

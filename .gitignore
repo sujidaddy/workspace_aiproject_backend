@@ -1,1 +1,5 @@
 /.metadata/
+TODO.md
+aiprojectserver/src/main/resources/application-api.properties
+aiprojectserver/src/main/resources/application-db.properties
+aiprojectserver/src/main/resources/application-oauth2.properties

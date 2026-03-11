@@ -2,12 +2,18 @@ package kr.kro.prjectwwtp.service;
 
 
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
+import org.apache.batik.transcoder.TranscoderInput;
+import org.apache.batik.transcoder.TranscoderOutput;
+import org.apache.batik.transcoder.image.PNGTranscoder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -648,4 +654,559 @@ public class MailService {
 		attachment.setDisposition("attachment");
 		return attachment;
 	}
+	
+	/**
+	 * 차트 HTML을 메일 본문에 포함시켜 전송
+	 * @param member 수신자
+	 * @param subject 메일 제목
+	 * @param bodyHtml 메일 본문
+	 * @param chartHtml 차트 HTML (body 태그 전까지만)
+	 */
+	public void sendEmailWithChartInBody(Member member, String subject, String bodyHtml, String chartHtml) {
+		String type = "sendReport";
+		String errorMsg = null;
+        try {
+        	// 차트 HTML을 메일 본문에 포함
+        	String bodyWithChart = bodyHtml + 
+        		"<div style=\"margin: 30px 5px; background-color: #f9f9f9; padding: 20px; border-radius: 8px;\">" +
+        		"<div style=\"font-size: 14px; color: #666; margin-bottom: 20px;\">" +
+        		"차트는 HTML 형식으로 표시되며, 브라우저에서 상호작용할 수 있습니다." +
+        		"</div>" +
+        		chartHtml +
+        		"</div>";
+        	
+        	Email from = new Email(fromEmail);
+			Email to = new Email(member.getUserEmail());
+			Content content = new Content("text/html", bodyWithChart);
+			Mail mail = new Mail(from, subject, to, content);
+			
+			Request request = new Request();
+			request.setMethod(Method.POST);
+			request.setEndpoint("mail/send");
+			request.setBody(mail.build());
+			
+			Response response = sendGrid.api(request);
+			System.out.println("sendEmail response : " + response.getStatusCode());
+			if(response.getStatusCode() != 202)
+				errorMsg = response.getBody();
+        } catch (Exception e) {
+			errorMsg = e.getMessage();
+			logService.addErrorLog("MailService.java", "sendEmailWithChartInBody()", e.getMessage());
+		} finally {
+			logService.addMailLog(member, type, errorMsg);	
+		}
+	}
+	
+	/**
+	 * SVG 차트 이미지를 생성하는 정적 메서드
+	 * @param data 데이터 포인트 리스트
+	 * @param keys 데이터 키 (TOC, PH, SS 등)
+	 * @param isSingle 단일 데이터인지 여부
+	 * @param title 차트 제목
+	 * @return SVG 문자열
+	 */
+	private String generateSvgChart(List<? extends Object> data, List<String> keys, boolean isSingle, String title) {
+		int width = 1000;
+		int height = 350;
+		int padding = 60;
+		int chartW = width - (padding * 2);
+		int chartH = height - (padding * 2);
+		
+		if (data == null || data.isEmpty()) {
+			return "<svg viewBox=\"0 0 " + width + " " + height + "\" xmlns=\"http://www.w3.org/2000/svg\" width=\"" + width + "\" height=\"" + height + "\">" +
+				   "<rect width=\"" + width + "\" height=\"" + height + "\" fill=\"white\"/>" +
+				   "<text x=\"500\" y=\"175\" text-anchor=\"middle\" fill=\"#999\">No data</text>" +
+				   "</svg>";
+		}
+		
+		// 메모리 효율을 위해 데이터 샘플링 (최대 200개 포인트)
+		List<?> sampledData = data;
+		int sampleRate = 1;
+		int maxDataPoints = 200;
+		
+		if (data.size() > maxDataPoints) {
+			sampleRate = data.size() / maxDataPoints;
+			List<Object> temp = new ArrayList<>();
+			for (int i = 0; i < data.size(); i += sampleRate) {
+				temp.add(data.get(i));
+			}
+			sampledData = temp;
+			System.out.println("[SVG] Data sampled: " + data.size() + " → " + sampledData.size() + " (rate: " + sampleRate + ")");
+		}
+		
+		StringBuilder svg = new StringBuilder();
+		// SVG 루트 요소
+		svg.append("<svg viewBox=\"0 0 ").append(width).append(" ").append(height)
+		   .append("\" xmlns=\"http://www.w3.org/2000/svg\" ")
+		   .append("width=\"").append(width).append("\" height=\"").append(height)
+		   .append("\" preserveAspectRatio=\"xMidYMid meet\">\n");
+		
+		// 배경 (흰색, 전체)
+		svg.append("<rect x=\"0\" y=\"0\" width=\"").append(width).append("\" height=\"").append(height)
+		   .append("\" fill=\"white\"/>\n");
+		
+		// 제목 추가
+		if (title != null && !title.isEmpty()) {
+			svg.append("<text x=\"").append(padding).append("\" y=\"25\" font-size=\"16\" font-weight=\"bold\" fill=\"#2c3e50\">")
+			   .append(title).append("</text>\n");
+		}
+		
+		// 차트 배경
+		svg.append("<rect x=\"").append(padding).append("\" y=\"").append(padding)
+		   .append("\" width=\"").append(chartW).append("\" height=\"").append(chartH)
+		   .append("\" fill=\"white\" stroke=\"#ddd\" stroke-width=\"1\"/>\n");
+		
+		// 그리드라인과 X축 레이블 (샘플링된 데이터 기반)
+		int dataSize = sampledData.size();
+		for (int i = 0; i < dataSize; i++) {
+			int x = padding + (int)(i * (double)chartW / (dataSize - 1));
+			svg.append("<line x1=\"").append(x).append("\" y1=\"").append(padding)
+			   .append("\" x2=\"").append(x).append("\" y2=\"").append(height - padding)
+			   .append("\" stroke=\"#f0f0f0\" stroke-width=\"1\"/>\n");
+			
+			// X축 레이블 (시간)
+			String timeLabel = getTimeFromData(sampledData, i);
+			svg.append("<text x=\"").append(x).append("\" y=\"").append(height - padding + 25)
+			   .append("\" text-anchor=\"middle\" font-size=\"10\" fill=\"#888\">")
+			   .append(timeLabel).append("</text>\n");
+		}
+		
+		// Y축 값 범위 계산
+		double minVal = Double.MAX_VALUE;
+		double maxVal = Double.MIN_VALUE;
+		
+		for (Object dataPoint : sampledData) {
+			for (String key : keys) {
+				double val = getValueFromData(dataPoint, key, isSingle);
+				minVal = Math.min(minVal, val);
+				maxVal = Math.max(maxVal, val);
+			}
+		}
+		
+		// Y축 범위 조정
+		double range = (maxVal - minVal == 0) ? 1 : (maxVal - minVal);
+		double yAxisUnit = calculateYAxisUnit(range);
+		double maxLabel = Math.ceil(maxVal / yAxisUnit) * yAxisUnit;
+		double minLabel = Math.floor(minVal / yAxisUnit) * yAxisUnit;
+		double labelRange = maxLabel - minLabel;
+		if (labelRange == 0) labelRange = yAxisUnit;
+		
+		// Y축 레이블 (최대 10개로 제한)
+		int labelCount = (int)Math.round(labelRange / yAxisUnit) + 1;
+		int maxLabels = 10;
+		int labelStep = Math.max(1, labelCount / maxLabels);
+		
+		for (int i = 0; i < labelCount; i += labelStep) {
+			double val = maxLabel - (labelRange / (labelCount - 1) * i);
+			int y = padding + (int)(i * chartH / (labelCount - 1));
+			svg.append("<text x=\"").append(padding - 10).append("\" y=\"").append(y + 5)
+			   .append("\" text-anchor=\"end\" font-size=\"10\" fill=\"#888\">")
+			   .append(String.format("%.1f", val)).append("</text>\n");
+			
+			svg.append("<line x1=\"").append(padding).append("\" y1=\"").append(y)
+			   .append("\" x2=\"").append(width - padding).append("\" y2=\"").append(y)
+			   .append("\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>\n");
+		}
+		
+		// 색상 정의
+		String[] colors = {"#e74c3c", "#2ecc71", "#f1c40f", "#9b59b6", "#34495e", "#e67e22", "#3498db"};
+		
+		// 차트 라인 그리기
+		for (int keyIdx = 0; keyIdx < keys.size(); keyIdx++) {
+			String key = keys.get(keyIdx);
+			String color = colors[keyIdx % colors.length];
+			
+			// polyline의 points 속성은 "x1,y1 x2,y2 x3,y3" 형식이어야 함
+			StringBuilder pointsData = new StringBuilder();
+			
+			for (int i = 0; i < dataSize; i++) {
+				double val = getValueFromData(sampledData.get(i), key, isSingle);
+				int x = padding + (int)(i * (double)chartW / (dataSize - 1));
+				double scaledVal = (val - minLabel) / labelRange * chartH;
+				int y = height - padding - (int)scaledVal;
+				
+				if (i > 0) {
+					pointsData.append(" ");
+				}
+				pointsData.append(x).append(",").append(y);
+			}
+			
+			svg.append("<polyline points=\"").append(pointsData.toString())
+			   .append("\" fill=\"none\" stroke=\"").append(color)
+			   .append("\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n");
+			
+			// 데이터 포인트 (모든 포인트는 표시하지 않음, 샘플링된 포인트만)
+			for (int i = 0; i < dataSize; i++) {
+				double val = getValueFromData(sampledData.get(i), key, isSingle);
+				int x = padding + (int)(i * (double)chartW / (dataSize - 1));
+				double scaledVal = (val - minLabel) / labelRange * chartH;
+				int y = height - padding - (int)scaledVal;
+				
+				svg.append("<circle cx=\"").append(x).append("\" cy=\"").append(y)
+				   .append("\" r=\"3\" fill=\"white\" stroke=\"").append(color)
+				   .append("\" stroke-width=\"1.5\"/>\n");
+			}
+		}
+		
+		// 범례 추가
+		int legendY = padding - 35;
+		for (int i = 0; i < keys.size(); i++) {
+			String key = keys.get(i);
+			String color = colors[i % colors.length];
+			int legendX = padding + (i * 150);
+			
+			svg.append("<rect x=\"").append(legendX).append("\" y=\"").append(legendY)
+			   .append("\" width=\"12\" height=\"12\" fill=\"").append(color).append("\"/>\n");
+			svg.append("<text x=\"").append(legendX + 18).append("\" y=\"").append(legendY + 12)
+			   .append("\" font-size=\"11\" fill=\"#333\">").append(key).append("</text>\n");
+		}
+		
+		svg.append("</svg>\n");
+		return svg.toString();
+	}
+	
+	private double calculateYAxisUnit(double range) {
+		if (range <= 1) return 0.1;
+		else if (range <= 5) return 0.5;
+		else if (range <= 10) return 1;
+		else if (range <= 50) return 5;
+		else if (range <= 100) return 10;
+		else if (range <= 500) return 50;
+		else if (range <= 1000) return 100;
+		else if (range <= 5000) return 500;
+		else if (range <= 10000) return 1000;
+		else if (range <= 50000) return 5000;
+		else return 10000;
+	}
+	
+	private String getTimeFromData(List<? extends Object> data, int index) {
+		Object item = data.get(index);
+		try {
+			if (item instanceof FlowPredict) {
+				return ((FlowPredict)item).getFlowTime().format(DateTimeFormatter.ofPattern("HH:mm"));
+			} else if (item instanceof TmsPredict) {
+				return ((TmsPredict)item).getTmsTime().format(DateTimeFormatter.ofPattern("HH:mm"));
+			}
+		} catch (Exception e) {
+			logService.addErrorLog("MailService.java", "getTimeFromData()", e.getMessage());
+		}
+		return "";
+	}
+	
+	private double getValueFromData(Object data, String key, boolean isSingle) {
+		try {
+			if (isSingle && data instanceof FlowPredict) {
+				return ((FlowPredict)data).getFlowValue();
+			} else if (data instanceof TmsPredict) {
+				TmsPredict tms = (TmsPredict) data;
+				switch(key) {
+					case "TOC": return tms.getToc();
+					case "PH": return tms.getPh();
+					case "SS": return tms.getSs();
+					case "FLUX": return tms.getFlux();
+					case "TN": return tms.getTn();
+					case "TP": return tms.getTp();
+				}
+			}
+		} catch (Exception e) {
+			logService.addErrorLog("MailService.java", "getValueFromData()", e.getMessage());
+		}
+		return 0;
+	}
+	
+	/**
+	 * 정적 SVG 차트로 메일 본문 생성
+	 * @param tmsList TMS 데이터
+	 * @param flowList 유입유량 데이터
+	 * @return 메일에 포함될 HTML (SVG 차트 포함)
+	 */
+	public String generateChartImages(List<TmsPredict> tmsList, List<FlowPredict> flowList) {
+		StringBuilder html = new StringBuilder();
+		
+		// CSS 스타일
+		html.append("<div style=\"font-family: Arial, sans-serif; background: #f9f9f9; padding: 20px;\">\n");
+		html.append("<div style=\"max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;\">\n");
+		
+		// 유입유량 차트
+		html.append("<div style=\"margin-bottom: 30px;\">\n");
+		html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">유입유량 예측</h3>\n");
+		html.append(generateSvgChart(flowList, java.util.Arrays.asList("flow"), true, ""));
+		html.append("</div>\n");
+		
+		// TMS 차트들
+		String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+		for (String key : tmsKeys) {
+			html.append("<div style=\"margin-bottom: 30px;\">\n");
+			html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">")
+			    .append(key).append(" 예측</h3>\n");
+			html.append(generateSvgChart(tmsList, java.util.Arrays.asList(key), false, ""));
+			html.append("</div>\n");
+		}
+		
+		html.append("</div>\n");
+		html.append("</div>\n");
+		
+		return html.toString();
+	}
+	
+	/**
+	 * SVG 문자열을 PNG 이미지로 변환
+	 * @param svgString SVG 문자열
+	 * @return PNG 이미지의 Base64 인코딩된 Data URL
+	 */
+	private String convertSvgToPngDataUrl(String svgString) {
+		try {
+			// SVG를 PNG로 변환
+			PNGTranscoder transcoder = new PNGTranscoder();
+			transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, 1000f);
+			transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, 350f);
+			
+			ByteArrayInputStream svgInput = new ByteArrayInputStream(svgString.getBytes(StandardCharsets.UTF_8));
+			ByteArrayOutputStream pngOutput = new ByteArrayOutputStream();
+			
+			TranscoderInput input = new TranscoderInput(svgInput);
+			TranscoderOutput output = new TranscoderOutput(pngOutput);
+			
+			transcoder.transcode(input, output);
+			
+			// PNG 바이트를 Base64로 인코딩
+			byte[] pngBytes = pngOutput.toByteArray();
+			String base64Image = Base64.getEncoder().encodeToString(pngBytes);
+			
+			// Data URL 형식으로 반환
+			return "data:image/png;base64," + base64Image;
+		} catch (Exception e) {
+			logService.addErrorLog("MailService.java", "convertSvgToPngDataUrl()", e.getMessage());
+			return "";
+		}
+	}
+	
+	/**
+	 * 정적 SVG 차트를 이미지로 변환하여 메일 본문 생성
+	 * @param tmsList TMS 데이터
+	 * @param flowList 유입유량 데이터
+	 * @return 메일에 포함될 HTML (PNG 이미지 차트 포함)
+	 */
+	public String generateChartImagesAsPng(List<TmsPredict> tmsList, List<FlowPredict> flowList) {
+		StringBuilder html = new StringBuilder();
+		
+		// CSS 스타일
+		html.append("<div style=\"font-family: Arial, sans-serif; background: #f9f9f9; padding: 20px;\">\n");
+		html.append("<div style=\"max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;\">\n");
+		
+		// 유입유량 차트
+		html.append("<div style=\"margin-bottom: 30px;\">\n");
+		html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">유입유량 예측</h3>\n");
+		String flowSvg = generateSvgChart(flowList, java.util.Arrays.asList("flow"), true, "");
+		String flowImageUrl = convertSvgToPngDataUrl(flowSvg);
+		html.append("<img src=\"").append(flowImageUrl).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" />\n");
+		html.append("</div>\n");
+		
+		// TMS 차트들
+		String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+		for (String key : tmsKeys) {
+			html.append("<div style=\"margin-bottom: 30px;\">\n");
+			html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">")
+			    .append(key).append(" 예측</h3>\n");
+			String tmsSvg = generateSvgChart(tmsList, java.util.Arrays.asList(key), false, "");
+			String tmsImageUrl = convertSvgToPngDataUrl(tmsSvg);
+			html.append("<img src=\"").append(tmsImageUrl).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" />\n");
+			html.append("</div>\n");
+		}
+		
+		html.append("</div>\n");
+		html.append("</div>\n");
+		
+		return html.toString();
+	}
+	
+	/**
+	 * SVG를 PNG 바이트 배열로 변환 (CID용)
+	 * @param svgString SVG 문자열
+	 * @return PNG 이미지의 바이트 배열
+	 */
+	private byte[] convertSvgToPngBytes(String svgString) {
+		try {
+			System.out.println("[SVG Conversion] Starting PNG conversion...");
+			System.out.println("[SVG Conversion] Original SVG Size: " + svgString.length() + " bytes");
+			System.out.println("[SVG Conversion] SVG Content (first 200 chars): " + svgString.substring(0, Math.min(200, svgString.length())));
+			
+			// SVG가 완전한 문서 구조를 가져야 함
+			String completeSvg = svgString.trim();
+			
+			// XML 선언 추가
+			if (!completeSvg.startsWith("<?xml")) {
+				completeSvg = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n" + completeSvg;
+			}
+			
+			// DOCTYPE 추가
+			if (!completeSvg.contains("<!DOCTYPE")) {
+				completeSvg = completeSvg.replace("<svg", 
+					"<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n<svg");
+			}
+			
+			System.out.println("[SVG Conversion] Complete SVG Size: " + completeSvg.length() + " bytes");
+			
+			// Batik 트랜스코더 설정
+			PNGTranscoder transcoder = new PNGTranscoder();
+			transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, 1000f);
+			transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, 350f);
+			
+			// SVG 입력 생성
+			ByteArrayInputStream svgInput = new ByteArrayInputStream(completeSvg.getBytes(StandardCharsets.UTF_8));
+			
+			// PNG 출력 생성
+			ByteArrayOutputStream pngOutput = new ByteArrayOutputStream();
+			
+			// 트랜스코더 입출력 설정
+			TranscoderInput input = new TranscoderInput(svgInput);
+			TranscoderOutput output = new TranscoderOutput(pngOutput);
+			
+			System.out.println("[SVG Conversion] Executing transcode...");
+			
+			// 트랜스코딩 실행
+			transcoder.transcode(input, output);
+			
+			byte[] pngBytes = pngOutput.toByteArray();
+			System.out.println("[SVG Conversion] Success! PNG Size: " + pngBytes.length + " bytes");
+			
+			return pngBytes;
+			
+		} catch (org.apache.batik.transcoder.TranscoderException te) {
+			System.err.println("[SVG Conversion] Batik TranscoderException:");
+			System.err.println("  Message: " + te.getMessage());
+			if (te.getCause() != null) {
+				System.err.println("  Cause: " + te.getCause().getMessage());
+				te.getCause().printStackTrace();
+			}
+			te.printStackTrace();
+			
+			String errorMsg = "Batik TranscoderException: " + te.getMessage();
+			if (te.getCause() != null) {
+				errorMsg += " (Cause: " + te.getCause().getMessage() + ")";
+			}
+			logService.addErrorLog("MailService.java", "convertSvgToPngBytes()", errorMsg);
+			return new byte[0];
+			
+		} catch (Exception e) {
+			System.err.println("[SVG Conversion] Error converting SVG to PNG:");
+			System.err.println("  Exception Type: " + e.getClass().getName());
+			System.err.println("  Message: " + e.getMessage());
+			e.printStackTrace();
+			
+			String errorMsg = "SVG to PNG conversion failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
+			logService.addErrorLog("MailService.java", "convertSvgToPngBytes()", errorMsg);
+			return new byte[0];
+		}
+	}
+	
+	/**
+	 * CID를 사용하여 차트 이미지를 메일에 포함시키는 메서드
+	 * @param member 수신자
+	 * @param subject 메일 제목
+	 * @param bodyHtml 메일 본문
+	 * @param tmsList TMS 데이터
+	 * @param flowList 유입유량 데이터
+	 */
+	public void sendEmailWithChartAsCID(Member member, String subject, String bodyHtml, 
+										List<TmsPredict> tmsList, List<FlowPredict> flowList) {
+		String type = "sendReport";
+		String errorMsg = null;
+        try {
+        	// 고정된 타임스탬프 생성 (모든 CID에서 동일하게 사용)
+        	String timestamp = String.valueOf(System.currentTimeMillis());
+        	
+        	// 메일 본문 생성 (CID 참조 포함)
+        	String bodyWithCidImages = generateChartBodyWithCID(bodyHtml, tmsList, flowList, timestamp);
+        	
+        	Email from = new Email(fromEmail);
+			Email to = new Email(member.getUserEmail());
+			Content content = new Content("text/html", bodyWithCidImages);
+			Mail mail = new Mail(from, subject, to, content);
+			
+			// 유입유량 차트
+			String flowSvg = generateSvgChart(flowList, java.util.Arrays.asList("flow"), true, "");
+			byte[] flowPng = convertSvgToPngBytes(flowSvg);
+			if (flowPng.length > 0) {
+				Attachments flowAttachment = new Attachments();
+				flowAttachment.setContent(Base64.getEncoder().encodeToString(flowPng));
+				flowAttachment.setFilename("chart_flow.png");
+				flowAttachment.setType("image/png");
+				flowAttachment.setDisposition("inline");
+				flowAttachment.setContentId("chart_flow_" + timestamp);
+				mail.addAttachments(flowAttachment);
+				System.out.println("[Mail CID] Added flow chart with CID: chart_flow_" + timestamp);
+			}
+			
+			// TMS 차트들
+			String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+			for (String key : tmsKeys) {
+				String tmsSvg = generateSvgChart(tmsList, java.util.Arrays.asList(key), false, "");
+				byte[] tmsPng = convertSvgToPngBytes(tmsSvg);
+				if (tmsPng.length > 0) {
+					Attachments tmsAttachment = new Attachments();
+					tmsAttachment.setContent(Base64.getEncoder().encodeToString(tmsPng));
+					tmsAttachment.setFilename("chart_" + key.toLowerCase() + ".png");
+					tmsAttachment.setType("image/png");
+					tmsAttachment.setDisposition("inline");
+					tmsAttachment.setContentId("chart_" + key + "_" + timestamp);
+					mail.addAttachments(tmsAttachment);
+					System.out.println("[Mail CID] Added " + key + " chart with CID: chart_" + key + "_" + timestamp);
+				}
+			}
+			
+			Request request = new Request();
+			request.setMethod(Method.POST);
+			request.setEndpoint("mail/send");
+			request.setBody(mail.build());
+			
+			Response response = sendGrid.api(request);
+			System.out.println("sendEmail response : " + response.getStatusCode());
+			if(response.getStatusCode() != 202)
+				errorMsg = response.getBody();
+        } catch (Exception e) {
+			errorMsg = e.getMessage();
+			logService.addErrorLog("MailService.java", "sendEmailWithChartAsCID()", e.getMessage());
+		} finally {
+			logService.addMailLog(member, type, errorMsg);	
+		}
+	}
+	
+	/**
+	 * CID 참조가 포함된 메일 본문 생성
+	 * @param bodyHtml 기본 메일 본문
+	 * @param tmsList TMS 데이터
+	 * @param flowList 유입유량 데이터
+	 * @param timestamp CID에 사용할 타임스탬프
+	 * @return CID 참조가 포함된 HTML
+	 */
+	private String generateChartBodyWithCID(String bodyHtml, List<TmsPredict> tmsList, List<FlowPredict> flowList, String timestamp) {
+		StringBuilder html = new StringBuilder(bodyHtml);
+		
+		// CSS 스타일
+		html.append("<div style=\"font-family: Arial, sans-serif; background: #f9f9f9; padding: 20px;\">\n");
+		html.append("<div style=\"max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;\">\n");
+		
+		// 유입유량 차트
+		html.append("<div style=\"margin-bottom: 30px;\">\n");
+		html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">유입유량 예측</h3>\n");
+		html.append("<img src=\"cid:chart_flow_").append(timestamp).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" alt=\"유입유량 차트\" />\n");
+		html.append("</div>\n");
+		
+		// TMS 차트들
+		String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+		for (String key : tmsKeys) {
+			html.append("<div style=\"margin-bottom: 30px;\">\n");
+			html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">")
+			    .append(key).append(" 예측</h3>\n");
+			html.append("<img src=\"cid:chart_").append(key).append("_").append(timestamp).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" alt=\"").append(key).append(" 차트\" />\n");
+			html.append("</div>\n");
+		}
+		
+		html.append("</div>\n");
+		html.append("</div>\n");
+		
+		return html.toString();
+	}
 }
+
