@@ -353,6 +353,7 @@ public class MemberController {
 			LocalDateTime end = now.plusDays(1).minusMinutes(1);
 			List<TmsPredict> tmsList = tmsService.findPredictList(now, end);
 			List<FlowPredict> flowList = flowService.findPredictList(now, end);
+			String fileName = "chart" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".html";
 
 			if(bSendEmail) {
 				List<Member> emailList = memberService.getValidateEmailMember();
@@ -363,14 +364,14 @@ public class MemberController {
 						continue;
 					String subject = "Report From FlowWater";
 					String body = mailService.reportBody(member);
+					String chart = mailService.reportChart(tmsList, flowList);
 					
 					// CID 방식으로 차트 이미지를 메일에 포함시켜 전송
-					mailService.sendEmailWithChartAsCID(member, subject, body, tmsList, flowList);
+					mailService.sendEmailWithChartAsCID(member, subject, body, tmsList, flowList, fileName, chart);
 					sendMailList.add(member.getUserEmail());
 				}
 			}
 			else {
-				String fileName = "chart" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".html";
 				saveChartFile(mailService.reportChart(tmsList, flowList), fileName);
 			}
 		}catch(Exception e) {

@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 
 import org.apache.batik.transcoder.TranscoderInput;
@@ -618,85 +619,6 @@ public class MailService {
 		}
 	}
 	
-	public void sendEmailWithAttachment(Member member, String subject, String bodyHtml, String fileContent, String fileName) {
-		String type = "sendReport";
-		String errorMsg = null;
-        try {
-        	Email from = new Email(fromEmail);
-			Email to = new Email(member.getUserEmail());
-			Content content = new Content("text/html", bodyHtml);
-			Mail mail = new Mail(from, subject, to, content);
-			
-			mail.addAttachments(createAttachment(fileContent, fileName));
-			
-			Request request = new Request();
-			request.setMethod(Method.POST);
-			request.setEndpoint("mail/send");
-			request.setBody(mail.build());
-			
-			Response response = sendGrid.api(request);
-			System.out.println("sendEmail response : " + response.getStatusCode());
-			if(response.getStatusCode() != 202)
-				errorMsg = response.getBody();
-        } catch (Exception e) {
-			errorMsg = e.getMessage();
-			logService.addErrorLog("MailService.java", "sendEmailWithAttachment()", e.getMessage());
-		} finally {
-			logService.addMailLog(member, type, errorMsg);	
-		}
-	}
-	
-	private Attachments createAttachment(String fileContent, String fileName) {
-		Attachments attachment = new Attachments();
-		attachment.setContent(Base64.getEncoder().encodeToString(fileContent.getBytes(StandardCharsets.UTF_8)));
-		attachment.setFilename(fileName);
-		attachment.setType("text/html");
-		attachment.setDisposition("attachment");
-		return attachment;
-	}
-	
-	/**
-	 * 차트 HTML을 메일 본문에 포함시켜 전송
-	 * @param member 수신자
-	 * @param subject 메일 제목
-	 * @param bodyHtml 메일 본문
-	 * @param chartHtml 차트 HTML (body 태그 전까지만)
-	 */
-	public void sendEmailWithChartInBody(Member member, String subject, String bodyHtml, String chartHtml) {
-		String type = "sendReport";
-		String errorMsg = null;
-        try {
-        	// 차트 HTML을 메일 본문에 포함
-        	String bodyWithChart = bodyHtml + 
-        		"<div style=\"margin: 30px 5px; background-color: #f9f9f9; padding: 20px; border-radius: 8px;\">" +
-        		"<div style=\"font-size: 14px; color: #666; margin-bottom: 20px;\">" +
-        		"차트는 HTML 형식으로 표시되며, 브라우저에서 상호작용할 수 있습니다." +
-        		"</div>" +
-        		chartHtml +
-        		"</div>";
-        	
-        	Email from = new Email(fromEmail);
-			Email to = new Email(member.getUserEmail());
-			Content content = new Content("text/html", bodyWithChart);
-			Mail mail = new Mail(from, subject, to, content);
-			
-			Request request = new Request();
-			request.setMethod(Method.POST);
-			request.setEndpoint("mail/send");
-			request.setBody(mail.build());
-			
-			Response response = sendGrid.api(request);
-			System.out.println("sendEmail response : " + response.getStatusCode());
-			if(response.getStatusCode() != 202)
-				errorMsg = response.getBody();
-        } catch (Exception e) {
-			errorMsg = e.getMessage();
-			logService.addErrorLog("MailService.java", "sendEmailWithChartInBody()", e.getMessage());
-		} finally {
-			logService.addMailLog(member, type, errorMsg);	
-		}
-	}
-	
 	/**
 	 * SVG 차트 이미지를 생성하는 정적 메서드
 	 * @param data 데이터 포인트 리스트
@@ -809,12 +731,19 @@ public class MailService {
 		}
 		
 		// 색상 정의
-		String[] colors = {"#e74c3c", "#2ecc71", "#f1c40f", "#9b59b6", "#34495e", "#e67e22", "#3498db"};
+		HashMap<String, String> colorMap = new HashMap<>();
+		colorMap.put("TOC", "#e74c3c");
+		colorMap.put("PH", "#2ecc71");
+		colorMap.put("SS", "#f1c40f");
+		colorMap.put("FLUX", "#9b59b6");
+		colorMap.put("TN", "#34495e");
+		colorMap.put("TP", "#e67e22");
+		colorMap.put("flow", "#3498db");
 		
 		// 차트 라인 그리기
 		for (int keyIdx = 0; keyIdx < keys.size(); keyIdx++) {
 			String key = keys.get(keyIdx);
-			String color = colors[keyIdx % colors.length];
+			String color = colorMap.get(key);
 			
 			// polyline의 points 속성은 "x1,y1 x2,y2 x3,y3" 형식이어야 함
 			StringBuilder pointsData = new StringBuilder();
@@ -852,7 +781,7 @@ public class MailService {
 		int legendY = padding - 35;
 		for (int i = 0; i < keys.size(); i++) {
 			String key = keys.get(i);
-			String color = colors[i % colors.length];
+			String color = colorMap.get(key);
 			int legendX = padding + (i * 150);
 			
 			svg.append("<rect x=\"").append(legendX).append("\" y=\"").append(legendY)
@@ -912,112 +841,6 @@ public class MailService {
 			logService.addErrorLog("MailService.java", "getValueFromData()", e.getMessage());
 		}
 		return 0;
-	}
-	
-	/**
-	 * 정적 SVG 차트로 메일 본문 생성
-	 * @param tmsList TMS 데이터
-	 * @param flowList 유입유량 데이터
-	 * @return 메일에 포함될 HTML (SVG 차트 포함)
-	 */
-	public String generateChartImages(List<TmsPredict> tmsList, List<FlowPredict> flowList) {
-		StringBuilder html = new StringBuilder();
-		
-		// CSS 스타일
-		html.append("<div style=\"font-family: Arial, sans-serif; background: #f9f9f9; padding: 20px;\">\n");
-		html.append("<div style=\"max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;\">\n");
-		
-		// 유입유량 차트
-		html.append("<div style=\"margin-bottom: 30px;\">\n");
-		html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">유입유량 예측</h3>\n");
-		html.append(generateSvgChart(flowList, java.util.Arrays.asList("flow"), true, ""));
-		html.append("</div>\n");
-		
-		// TMS 차트들
-		String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
-		for (String key : tmsKeys) {
-			html.append("<div style=\"margin-bottom: 30px;\">\n");
-			html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">")
-			    .append(key).append(" 예측</h3>\n");
-			html.append(generateSvgChart(tmsList, java.util.Arrays.asList(key), false, ""));
-			html.append("</div>\n");
-		}
-		
-		html.append("</div>\n");
-		html.append("</div>\n");
-		
-		return html.toString();
-	}
-	
-	/**
-	 * SVG 문자열을 PNG 이미지로 변환
-	 * @param svgString SVG 문자열
-	 * @return PNG 이미지의 Base64 인코딩된 Data URL
-	 */
-	private String convertSvgToPngDataUrl(String svgString) {
-		try {
-			// SVG를 PNG로 변환
-			PNGTranscoder transcoder = new PNGTranscoder();
-			transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, 1000f);
-			transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, 350f);
-			
-			ByteArrayInputStream svgInput = new ByteArrayInputStream(svgString.getBytes(StandardCharsets.UTF_8));
-			ByteArrayOutputStream pngOutput = new ByteArrayOutputStream();
-			
-			TranscoderInput input = new TranscoderInput(svgInput);
-			TranscoderOutput output = new TranscoderOutput(pngOutput);
-			
-			transcoder.transcode(input, output);
-			
-			// PNG 바이트를 Base64로 인코딩
-			byte[] pngBytes = pngOutput.toByteArray();
-			String base64Image = Base64.getEncoder().encodeToString(pngBytes);
-			
-			// Data URL 형식으로 반환
-			return "data:image/png;base64," + base64Image;
-		} catch (Exception e) {
-			logService.addErrorLog("MailService.java", "convertSvgToPngDataUrl()", e.getMessage());
-			return "";
-		}
-	}
-	
-	/**
-	 * 정적 SVG 차트를 이미지로 변환하여 메일 본문 생성
-	 * @param tmsList TMS 데이터
-	 * @param flowList 유입유량 데이터
-	 * @return 메일에 포함될 HTML (PNG 이미지 차트 포함)
-	 */
-	public String generateChartImagesAsPng(List<TmsPredict> tmsList, List<FlowPredict> flowList) {
-		StringBuilder html = new StringBuilder();
-		
-		// CSS 스타일
-		html.append("<div style=\"font-family: Arial, sans-serif; background: #f9f9f9; padding: 20px;\">\n");
-		html.append("<div style=\"max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px;\">\n");
-		
-		// 유입유량 차트
-		html.append("<div style=\"margin-bottom: 30px;\">\n");
-		html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">유입유량 예측</h3>\n");
-		String flowSvg = generateSvgChart(flowList, java.util.Arrays.asList("flow"), true, "");
-		String flowImageUrl = convertSvgToPngDataUrl(flowSvg);
-		html.append("<img src=\"").append(flowImageUrl).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" />\n");
-		html.append("</div>\n");
-		
-		// TMS 차트들
-		String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
-		for (String key : tmsKeys) {
-			html.append("<div style=\"margin-bottom: 30px;\">\n");
-			html.append("<h3 style=\"color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin: 0 0 15px 0;\">")
-			    .append(key).append(" 예측</h3>\n");
-			String tmsSvg = generateSvgChart(tmsList, java.util.Arrays.asList(key), false, "");
-			String tmsImageUrl = convertSvgToPngDataUrl(tmsSvg);
-			html.append("<img src=\"").append(tmsImageUrl).append("\" style=\"width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;\" />\n");
-			html.append("</div>\n");
-		}
-		
-		html.append("</div>\n");
-		html.append("</div>\n");
-		
-		return html.toString();
 	}
 	
 	/**
@@ -1109,7 +932,8 @@ public class MailService {
 	 * @param flowList 유입유량 데이터
 	 */
 	public void sendEmailWithChartAsCID(Member member, String subject, String bodyHtml, 
-										List<TmsPredict> tmsList, List<FlowPredict> flowList) {
+										List<TmsPredict> tmsList, List<FlowPredict> flowList,
+										String fileName, String chart) {
 		String type = "sendReport";
 		String errorMsg = null;
         try {
