@@ -1,11 +1,6 @@
 package kr.kro.prjectwwtp.controller;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -52,7 +47,6 @@ import kr.kro.prjectwwtp.service.LogService;
 import kr.kro.prjectwwtp.service.TmsService;
 import kr.kro.prjectwwtp.service.WeatherService;
 import kr.kro.prjectwwtp.util.JWTUtil;
-import kr.kro.prjectwwtp.util.Util;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -266,13 +260,14 @@ public class TmsController {
 			List<WeatherDTO> aws569 = weatherService.findWeatherDTOByStnAndLogTimeBetween(569, fakeNow.minusDays(1).plusMinutes(1), fakeNow);
 			System.out.println("aws569 : " + aws569.size());
 			
-			TmsPredict[] predictions = requestTms(now, aws368, aws541, aws569, tmsList);
-			List<TmsImputate> tmsListReal = tmsService.getTmsImputateListBetwwen(fakeNow, fakeNow.plusHours(12));
-			
-			// 데이터 확인을 위해 데이터를 임시로 cvs로 저장
-			// tmsList, aws368, aws541, asw569, predictions, 실제 이 기간의 tms 실측값
-			if(predictions != null)
-				saveToCsv(now, tmsList, aws368, aws541, aws569, predictions, tmsListReal, fakeNow);
+			requestTms(now, aws368, aws541, aws569, tmsList);
+//			TmsPredict[] predictions = requestTms(now, aws368, aws541, aws569, tmsList);
+//			List<TmsImputate> tmsListReal = tmsService.getTmsImputateListBetwwen(fakeNow, fakeNow.plusHours(12));
+//			
+//			// 데이터 확인을 위해 데이터를 임시로 cvs로 저장
+//			// tmsList, aws368, aws541, asw569, predictions, 실제 이 기간의 tms 실측값
+//			if(predictions != null)
+//				saveToCsv(now, tmsList, aws368, aws541, aws569, predictions, tmsListReal, fakeNow);
 								
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -313,151 +308,151 @@ public class TmsController {
 		return null;
 	}
 	
-	private void saveToCsv(
-			LocalDateTime now,
-			List<TmsImputate> tmsList, 
-			List<WeatherDTO> aws368, 
-			List<WeatherDTO> aws541, 
-			List<WeatherDTO> aws569, 
-			TmsPredict[] predictions, 
-			List<TmsImputate> tmsListReal,
-			LocalDateTime fakeNow) {
-		try {
-			String fileName = "요청내용" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm00")) + ".csv";
-			File file = Util.resolveFilePath(fileName);
-			
-			String data = "";
-			data += "SYS_TIME, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU, ASW368, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance, ASW541, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance, ASW569, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance\r\n";
-			for(TmsImputate tms : tmsList) {
-				LocalDateTime time = tms.getTmsTime();
-				data += "'" + tms.getStrtime() + "', ";
-				data += tms.getToc() + ", ";
-				data += tms.getPh() + ", ";
-				data += tms.getSs() + ", ";
-				data += tms.getFlux() + ", ";
-				data += tms.getTn() + ", ";
-				data += tms.getTp() + ", ";
-				
-				WeatherDTO weather368 = getWeatherDto(time, aws569);
-				if(weather368 != null) {
-					data += ", ";
-					data += weather368.getTa() + ", ";
-					data += weather368.getRn15m() + ", ";
-					data += weather368.getRn60m() + ", ";
-					data += weather368.getRn12h() + ", ";
-					data += weather368.getRnday() + ", ";
-					data += weather368.getHm() + ", ";
-					data += weather368.getTd() + ", ";
-					data += weather368.getDistance() + ", ";
-				} else {
-					data += ", , , , , , , , , ";
-				}
-				
-				WeatherDTO weather541 = getWeatherDto(time, aws541);
-				if(weather541 != null) {
-					data += ", ";
-					data += weather541.getTa() + ", ";
-					data += weather541.getRn15m() + ", ";
-					data += weather541.getRn60m() + ", ";
-					data += weather541.getRn12h() + ", ";
-					data += weather541.getRnday() + ", ";
-					data += weather541.getHm() + ", ";
-					data += weather541.getTd() + ", ";
-					data += weather541.getDistance() + ", ";
-				} else {
-					data += ", , , , , , , , , ";
-				}
-				
-				WeatherDTO weather569 = getWeatherDto(time, aws569);
-				if(weather569 != null) {
-					data += ", ";
-					data += weather569.getTa() + ", ";
-					data += weather569.getRn15m() + ", ";
-					data += weather569.getRn60m() + ", ";
-					data += weather569.getRn12h() + ", ";
-					data += weather569.getRnday() + ", ";
-					data += weather569.getHm() + ", ";
-					data += weather569.getTd() + ", ";
-					data += weather569.getDistance() + ", \r\n";
-				} else {
-					data += ", , , , , , , , , \r\n";
-				}
-			}
-			
-			// UTF-8 인코딩으로 파일 작성
-			try (BufferedWriter bw = new BufferedWriter(
-					new OutputStreamWriter(new FileOutputStream(file.getAbsolutePath()), "UTF-8"))) {
-				bw.write(data);
-				bw.flush();
-				bw.close();
-			}
-			
-			String fileName2 = "예측내용" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm00")) + ".csv";
-			File file2 = Util.resolveFilePath(fileName2);
-			
-			String data2 = "";
-			data2 += "SYS_TIME, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU, Origin Data, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU \r\n";
-			for(TmsPredict tms : predictions) {
-				LocalDateTime time = tms.getTmsTime();
-				data2 += "'" + tms.getTmsTime() + "', ";
-				data2 += tms.getToc() + ", ";
-				data2 += tms.getPh() + ", ";
-				data2 += tms.getSs() + ", ";
-				data2 += tms.getFlux() + ", ";
-				data2 += tms.getTn() + ", ";
-				data2 += tms.getTp() + ", ";
-				
-				TmsImputate tmsReal =  getTmsReal(time, tmsListReal);
-				if(tmsReal != null) {
-					data2 += ", ";
-					data2 += tmsReal.getToc() + ", ";
-					data2 += tmsReal.getPh() + ", ";
-					data2 += tmsReal.getSs() + ", ";
-					data2 += tmsReal.getFlux() + ", ";
-					data2 += tmsReal.getTn() + ", ";
-					data2 += tmsReal.getTp() + "\r\n";
-				} else  {
-					data2 += ", , , , , , , , \r\n";
-				}
-			}
-				
-			// UTF-8 인코딩으로 파일 작성
-			try (BufferedWriter bw = new BufferedWriter(
-					new OutputStreamWriter(new FileOutputStream(file2.getAbsolutePath()), "UTF-8"))) {
-				bw.write(data2);
-				bw.flush();
-				bw.close();
-			}
-		}catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-	
-	private WeatherDTO getWeatherDto(LocalDateTime time, List<WeatherDTO> list) {
-		if(list == null || time == null) {
-			return null;
-		}
-		String strTime = time.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-		for(WeatherDTO weather : list) {
-			if(weather.getTime().equals(strTime)) {
-				return weather;
-			}
-		}
-		return null;
-	}
-	
-	private TmsImputate getTmsReal(LocalDateTime time, List<TmsImputate> list) {
-		if(list == null || time == null) {
-			return null;
-		}
-		DateTimeFormatter pattern = DateTimeFormatter.ofPattern("HHmmss");
-		for(TmsImputate tms : list) {
-			if(tms.getTmsTime().format(pattern).equals(time.format(pattern))) {
-				return tms;
-			}
-		}
-		return null;
-	}
+//	private void saveToCsv(
+//			LocalDateTime now,
+//			List<TmsImputate> tmsList, 
+//			List<WeatherDTO> aws368, 
+//			List<WeatherDTO> aws541, 
+//			List<WeatherDTO> aws569, 
+//			TmsPredict[] predictions, 
+//			List<TmsImputate> tmsListReal,
+//			LocalDateTime fakeNow) {
+//		try {
+//			String fileName = "요청내용" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm00")) + ".csv";
+//			File file = Util.resolveFilePath(fileName);
+//			
+//			String data = "";
+//			data += "SYS_TIME, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU, ASW368, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance, ASW541, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance, ASW569, TA, RN_15m, RN_60m, RN_12H, RN_DAY, HM, TD, distance\r\n";
+//			for(TmsImputate tms : tmsList) {
+//				LocalDateTime time = tms.getTmsTime();
+//				data += "'" + tms.getStrtime() + "', ";
+//				data += tms.getToc() + ", ";
+//				data += tms.getPh() + ", ";
+//				data += tms.getSs() + ", ";
+//				data += tms.getFlux() + ", ";
+//				data += tms.getTn() + ", ";
+//				data += tms.getTp() + ", ";
+//				
+//				WeatherDTO weather368 = getWeatherDto(time, aws569);
+//				if(weather368 != null) {
+//					data += ", ";
+//					data += weather368.getTa() + ", ";
+//					data += weather368.getRn15m() + ", ";
+//					data += weather368.getRn60m() + ", ";
+//					data += weather368.getRn12h() + ", ";
+//					data += weather368.getRnday() + ", ";
+//					data += weather368.getHm() + ", ";
+//					data += weather368.getTd() + ", ";
+//					data += weather368.getDistance() + ", ";
+//				} else {
+//					data += ", , , , , , , , , ";
+//				}
+//				
+//				WeatherDTO weather541 = getWeatherDto(time, aws541);
+//				if(weather541 != null) {
+//					data += ", ";
+//					data += weather541.getTa() + ", ";
+//					data += weather541.getRn15m() + ", ";
+//					data += weather541.getRn60m() + ", ";
+//					data += weather541.getRn12h() + ", ";
+//					data += weather541.getRnday() + ", ";
+//					data += weather541.getHm() + ", ";
+//					data += weather541.getTd() + ", ";
+//					data += weather541.getDistance() + ", ";
+//				} else {
+//					data += ", , , , , , , , , ";
+//				}
+//				
+//				WeatherDTO weather569 = getWeatherDto(time, aws569);
+//				if(weather569 != null) {
+//					data += ", ";
+//					data += weather569.getTa() + ", ";
+//					data += weather569.getRn15m() + ", ";
+//					data += weather569.getRn60m() + ", ";
+//					data += weather569.getRn12h() + ", ";
+//					data += weather569.getRnday() + ", ";
+//					data += weather569.getHm() + ", ";
+//					data += weather569.getTd() + ", ";
+//					data += weather569.getDistance() + ", \r\n";
+//				} else {
+//					data += ", , , , , , , , , \r\n";
+//				}
+//			}
+//			
+//			// UTF-8 인코딩으로 파일 작성
+//			try (BufferedWriter bw = new BufferedWriter(
+//					new OutputStreamWriter(new FileOutputStream(file.getAbsolutePath()), "UTF-8"))) {
+//				bw.write(data);
+//				bw.flush();
+//				bw.close();
+//			}
+//			
+//			String fileName2 = "예측내용" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm00")) + ".csv";
+//			File file2 = Util.resolveFilePath(fileName2);
+//			
+//			String data2 = "";
+//			data2 += "SYS_TIME, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU, Origin Data, TOC_VU, PH_VU, SS_VU, FLUX_VU, TN_VU, TP_VU \r\n";
+//			for(TmsPredict tms : predictions) {
+//				LocalDateTime time = tms.getTmsTime();
+//				data2 += "'" + tms.getTmsTime() + "', ";
+//				data2 += tms.getToc() + ", ";
+//				data2 += tms.getPh() + ", ";
+//				data2 += tms.getSs() + ", ";
+//				data2 += tms.getFlux() + ", ";
+//				data2 += tms.getTn() + ", ";
+//				data2 += tms.getTp() + ", ";
+//				
+//				TmsImputate tmsReal =  getTmsReal(time, tmsListReal);
+//				if(tmsReal != null) {
+//					data2 += ", ";
+//					data2 += tmsReal.getToc() + ", ";
+//					data2 += tmsReal.getPh() + ", ";
+//					data2 += tmsReal.getSs() + ", ";
+//					data2 += tmsReal.getFlux() + ", ";
+//					data2 += tmsReal.getTn() + ", ";
+//					data2 += tmsReal.getTp() + "\r\n";
+//				} else  {
+//					data2 += ", , , , , , , , \r\n";
+//				}
+//			}
+//				
+//			// UTF-8 인코딩으로 파일 작성
+//			try (BufferedWriter bw = new BufferedWriter(
+//					new OutputStreamWriter(new FileOutputStream(file2.getAbsolutePath()), "UTF-8"))) {
+//				bw.write(data2);
+//				bw.flush();
+//				bw.close();
+//			}
+//		}catch (Exception e) {
+//			e.printStackTrace();
+//		}
+//	}
+//	
+//	private WeatherDTO getWeatherDto(LocalDateTime time, List<WeatherDTO> list) {
+//		if(list == null || time == null) {
+//			return null;
+//		}
+//		String strTime = time.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+//		for(WeatherDTO weather : list) {
+//			if(weather.getTime().equals(strTime)) {
+//				return weather;
+//			}
+//		}
+//		return null;
+//	}
+//	
+//	private TmsImputate getTmsReal(LocalDateTime time, List<TmsImputate> list) {
+//		if(list == null || time == null) {
+//			return null;
+//		}
+//		DateTimeFormatter pattern = DateTimeFormatter.ofPattern("HHmmss");
+//		for(TmsImputate tms : list) {
+//			if(tms.getTmsTime().format(pattern).equals(time.format(pattern))) {
+//				return tms;
+//			}
+//		}
+//		return null;
+//	}
 	
 	@GetMapping("/tmsList")
 	@Operation(summary="어제부터의 실시간 정보와 내일까지의 예상 정보를 요청", description = "결측/이상 값을 처리한 데이터를 조회합니다. 데이터가 없으면 보간을 수행합니다.")

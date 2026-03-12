@@ -34,7 +34,6 @@ public class MemberService {
 	private PasswordEncoder encoder = new PasswordEncoder();
 	
 	public Member getByIdAndPassword(String userId, String password) {
-		List<Member> list = memberRepo.findAll();
 		Optional<Member> opt =  memberRepo.findByUserId(userId);
 		if(opt.isEmpty()) {
 			return null;

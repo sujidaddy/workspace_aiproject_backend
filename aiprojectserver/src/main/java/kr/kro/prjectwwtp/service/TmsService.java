@@ -67,7 +67,7 @@ public class TmsService {
 		int lineNo = 0;
 		List<TmsOrigin> list = new ArrayList<>();
 		String line;
-		DateTimeFormatter df = DateTimeFormatter.ofPattern("yyyyMMdd");
+		//DateTimeFormatter df = DateTimeFormatter.ofPattern("yyyyMMdd");
 		double preFlux = 0;
 		try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
 			while ((line = br.readLine()) != null) {

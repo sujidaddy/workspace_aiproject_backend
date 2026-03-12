@@ -21,7 +21,7 @@ import reactor.netty.http.client.HttpClient;
 @Service
 @RequiredArgsConstructor
 public class FastApiService {
-	private LogService logService;
+	private final LogService logService;
 	private WebClient webClient;
 	
 	@Value("${spring.FastAPI.URI}")

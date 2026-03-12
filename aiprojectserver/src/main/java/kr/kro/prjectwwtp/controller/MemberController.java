@@ -1,9 +1,5 @@
 package kr.kro.prjectwwtp.controller;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -353,7 +349,8 @@ public class MemberController {
 			LocalDateTime end = now.plusDays(1).minusMinutes(1);
 			List<TmsPredict> tmsList = tmsService.findPredictList(now, end);
 			List<FlowPredict> flowList = flowService.findPredictList(now, end);
-			String fileName = "chart" + now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".html";
+			String timeStamp = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+			String fileName = "chart" + timeStamp + ".html";
 
 			if(bSendEmail) {
 				List<Member> emailList = memberService.getValidateEmailMember();
@@ -362,17 +359,9 @@ public class MemberController {
 				for(Member member : emailList) {
 					if(sendMailList.contains(member.getUserEmail()))
 						continue;
-					String subject = "Report From FlowWater";
-					String body = mailService.reportBody(member);
-					String chart = mailService.reportChart(tmsList, flowList);
-					
-					// CID 방식으로 차트 이미지를 메일에 포함시켜 전송
-					mailService.sendEmailWithChartAsCID(member, subject, body, tmsList, flowList, fileName, chart);
+					mailService.sendReportMail(member, tmsList, flowList, timeStamp, fileName);
 					sendMailList.add(member.getUserEmail());
 				}
-			}
-			else {
-				saveChartFile(mailService.reportChart(tmsList, flowList), fileName);
 			}
 		}catch(Exception e) {
 			e.printStackTrace();
@@ -381,38 +370,38 @@ public class MemberController {
 		
 	}
 	
-	private void saveChartFile(String body, String filepath) throws Exception {
-		try {
-			File file = Util.resolveFilePath(filepath);
-			// 파일 경로의 디렉토리 생성
-			File parentDir = file.getParentFile();
-			if(parentDir != null && !parentDir.exists()) {
-				boolean dirCreated = parentDir.mkdir();
-				if(!dirCreated && !parentDir.exists()) {
-					throw new Exception("디렉토리 생성 실패: " + parentDir.getAbsolutePath());
-				}
-				System.out.println("[saveChartFile] 디렉토리 생성: " + parentDir.getAbsolutePath());
-			}
-			
-			// 부모 디렉토리 쓰기 권한 확인
-			if (parentDir != null && !parentDir.canWrite()) {
-				throw new Exception("디렉토리 쓰기 권한 없음: " + parentDir.getAbsolutePath());
-			}
-			
-			// UTF-8 인코딩으로 파일 작성
-			try (BufferedWriter bw = new BufferedWriter(
-					new OutputStreamWriter(new FileOutputStream(file.getAbsolutePath()), "UTF-8"))) {
-				bw.write(body);
-			}
-			
-		} catch (Exception e) {
-			System.err.println("[saveChartFile] 파일 저장 중 오류 발생: " + e.getMessage());
-			e.printStackTrace();
-			logService.addErrorLog("MemberController.java", "saveChartFile()", e.getMessage());
-			throw new Exception("파일 저장 중 오류가 발생했습니다: " + e.getMessage());
-		}
-		
-	}
+//	private void saveChartFile(String body, String filepath) throws Exception {
+//		try {
+//			File file = Util.resolveFilePath(filepath);
+//			// 파일 경로의 디렉토리 생성
+//			File parentDir = file.getParentFile();
+//			if(parentDir != null && !parentDir.exists()) {
+//				boolean dirCreated = parentDir.mkdir();
+//				if(!dirCreated && !parentDir.exists()) {
+//					throw new Exception("디렉토리 생성 실패: " + parentDir.getAbsolutePath());
+//				}
+//				System.out.println("[saveChartFile] 디렉토리 생성: " + parentDir.getAbsolutePath());
+//			}
+//			
+//			// 부모 디렉토리 쓰기 권한 확인
+//			if (parentDir != null && !parentDir.canWrite()) {
+//				throw new Exception("디렉토리 쓰기 권한 없음: " + parentDir.getAbsolutePath());
+//			}
+//			
+//			// UTF-8 인코딩으로 파일 작성
+//			try (BufferedWriter bw = new BufferedWriter(
+//					new OutputStreamWriter(new FileOutputStream(file.getAbsolutePath()), "UTF-8"))) {
+//				bw.write(body);
+//			}
+//			
+//		} catch (Exception e) {
+//			System.err.println("[saveChartFile] 파일 저장 중 오류 발생: " + e.getMessage());
+//			e.printStackTrace();
+//			logService.addErrorLog("MemberController.java", "saveChartFile()", e.getMessage());
+//			throw new Exception("파일 저장 중 오류가 발생했습니다: " + e.getMessage());
+//		}
+//		
+//	}
 	
 	@GetMapping("/validateKey")
 	@Operation(summary="Email 인증 완료", description = "Email 인증 완료")
