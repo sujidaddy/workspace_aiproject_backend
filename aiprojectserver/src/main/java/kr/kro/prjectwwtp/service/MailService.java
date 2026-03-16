@@ -372,12 +372,6 @@ public class MailService {
 		svg.append("<rect x=\"0\" y=\"0\" width=\"").append(width).append("\" height=\"").append(height)
 		   .append("\" fill=\"white\"/>\n");
 		
-		// 제목 추가
-		if (title != null && !title.isEmpty()) {
-			svg.append("<text x=\"").append(padding).append("\" y=\"25\" font-size=\"16\" font-weight=\"bold\" fill=\"#2c3e50\">")
-			   .append(title).append("</text>\n");
-		}
-		
 		// 차트 배경
 		svg.append("<rect x=\"").append(padding).append("\" y=\"").append(padding)
 		   .append("\" width=\"").append(chartW).append("\" height=\"").append(chartH)
@@ -875,10 +869,11 @@ public class MailService {
            .append("' xmlns='http://www.w3.org/2000/svg' width='").append(width).append("' height='").append(height)
            .append("' preserveAspectRatio='xMidYMid meet' style='position:relative;'>\n");
         svg.append("<rect x='0' y='0' width='").append(width).append("' height='").append(height).append("' fill='white'/>");
-        if (title != null && !title.isEmpty()) {
-            svg.append("<text x='").append(padding).append("' y='25' font-size='16' font-weight='bold' fill='#2c3e50'>")
-               .append(title).append("</text>\n");
-        }
+        // 제목 추가 (SVG 내부 제목 제거)
+        // if (title != null && !title.isEmpty()) {
+        //     svg.append("<text x='").append(padding).append("' y='25' font-size='16' font-weight='bold' fill='#2c3e50'>")
+        //        .append(title).append("</text>\n");
+        // }
         svg.append("<rect x='").append(padding).append("' y='").append(padding)
            .append("' width='").append(chartW).append("' height='").append(chartH)
            .append("' fill='white' stroke='#ddd' stroke-width='1'/>");
