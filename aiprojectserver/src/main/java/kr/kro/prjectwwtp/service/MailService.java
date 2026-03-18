@@ -9,7 +9,6 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 
@@ -24,12 +23,10 @@ import com.sendgrid.Request;
 import com.sendgrid.Response;
 import com.sendgrid.SendGrid;
 import com.sendgrid.helpers.mail.Mail;
-import com.sendgrid.helpers.mail.objects.Attachments;
 import com.sendgrid.helpers.mail.objects.Content;
 import com.sendgrid.helpers.mail.objects.Email;
 
 import kr.kro.prjectwwtp.domain.FlowPredict;
-
 import kr.kro.prjectwwtp.domain.Member;
 import kr.kro.prjectwwtp.domain.TmsPredict;
 import lombok.RequiredArgsConstructor;
@@ -72,7 +69,7 @@ public class MailService {
 		              "        본 메일은 <b>FlowWater</b> 서비스 이용을 위해 발송되었습니다.<br>" +
 		              "        본 메일의 인증은 10분 간만 유효합니다." +
 		              "    </p>" +
-		              "<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px;'> " +
+		              "<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> " +
 		              "  <tr> " +
 		              "    <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff;'> " +
 		              "      <a href='" + validateLink + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'> " +
@@ -85,7 +82,7 @@ public class MailService {
 		              "        더이상 이 보고서를 받지 않으시려면<br>" +
 		              "        아래 버튼을 눌러 이메일 정보를 삭제하십시오..<br>" +
 		              "    </p>" +
-		              "<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px;'> " +
+		              "<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> " +
 		              "  <tr> " +
 		              "    <td align='center' bgcolor='#ff4444' width='210' height='45' style='border-radius: 5px; color: #ffffff;'> " +
 		              "      <a href='" + deleteLink + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'> " +
@@ -208,34 +205,14 @@ public class MailService {
 	    String type = "sendReport";
 	    String errorMsg = null;
 	    try {
-	        HashMap<String, String> chartPaths = new HashMap<>();
-	        HashMap<String, String> tmsSvgs = new HashMap<>();
-	        String flowSvg = generateSvgChartWithTooltip(flowList, java.util.Arrays.asList("flow"), true, "유입유량 예측");
-	        String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
-	        for (String key : tmsKeys) {
-	            String tmsSvg = generateSvgChartWithTooltip(tmsList, java.util.Arrays.asList(key), false, key + " 예측");
-	            tmsSvgs.put(key, tmsSvg);
+	        // 첨부용 차트 파일을 서버에서 읽어 첨부
+	        String chartFileName = fileName != null ? fileName : ("chart_report_" + timeStamp + ".html");
+	        File chartFile = new File(chartSavePath, chartFileName);
+	        byte[] fileBytes = null;
+	        if (chartFile.exists()) {
+	            fileBytes = java.nio.file.Files.readAllBytes(chartFile.toPath());
 	        }
-	        byte[] flowPng = convertSvgToPngBytes(flowSvg);
-	        String flowPath = null;
-	        if (flowPng.length > 0) {
-	            String flowFilename = "chart_flow_" + timeStamp + ".png";
-	            String flowFilePath = savePngToLocalFile(flowPng, flowFilename);
-	            if (flowFilePath != null) {
-	                flowPath = flowFilename;
-	            }
-	        }
-	        for (String key : tmsKeys) {
-	            byte[] tmsPng = convertSvgToPngBytes(tmsSvgs.get(key));
-	            if (tmsPng.length > 0) {
-	                String tmsFilename = "chart_" + key.toLowerCase() + "_" + timeStamp + ".png";
-	                String tmsFilePath = savePngToLocalFile(tmsPng, tmsFilename);
-	                if (tmsFilePath != null) {
-	                    chartPaths.put(key, tmsFilename);
-	                }
-	            }
-	        }
-	        // 본문 구성
+	        // 본문 구성 (차트 이미지 포함)
 	        String subject = "Report From FlowWater";
 	        String userId = member.getUserId();
 	        String email = member.getUserEmail();
@@ -245,70 +222,41 @@ public class MailService {
 	        bodyHtml.append("<h1 style=\"margin: 0; padding: 0 5px; font-size: 28px; font-weight: 400;\">");
 	        bodyHtml.append("<span style=\"color: #3498db;\">" + subject + "</span> 안내</h1>");
 	        bodyHtml.append("<div style=\"margin-top:30px;\">");
-	        // 모든 차트 반복 출력
-	        if (flowPath != null) {
-	            bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>유입유량 예측</b><br><img src=\"").append(chartServerUrl).append("/").append(flowPath).append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
+	        String chartFileAttachName = chartFileName;
+	        String chartHtmlUrl = chartServerUrl + "/" + chartFileName;
+	        // 상단 타이틀 바로 아래에 버튼 배치
+	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">아래 버튼을 클릭해 12시간 동안의 예측차트를 확인해보세요.<br>");
+	        bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
+	        // 안내 및 차트 이미지
+	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 30px; padding: 0 5px;\">아래 차트 이미지를 확인해보세요.<br></p>");
+	        // 차트 이미지 삽입
+	        String flowPng = "chart_flow_" + timeStamp + ".png";
+	        if (new java.io.File(chartSavePath, flowPng).exists()) {
+	            bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>유입유량 예측</b><br><img src=\"")
+	                    .append(chartServerUrl).append("/").append(flowPng)
+	                    .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
 	        }
+	        String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
 	        for (String key : tmsKeys) {
-	            if (chartPaths.containsKey(key)) {
-	                bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>").append(key).append(" 예측</b><br><img src=\"").append(chartServerUrl).append("/").append(chartPaths.get(key)).append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
+	            String tmsPng = "chart_" + key.toLowerCase() + "_" + timeStamp + ".png";
+	            if (new java.io.File(chartSavePath, tmsPng).exists()) {
+	                bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>")
+	                        .append(key).append(" 예측</b><br><img src=\"")
+	                        .append(chartServerUrl).append("/").append(tmsPng)
+	                        .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
 	            }
 	        }
 	        bodyHtml.append("</div>");
-	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">첨부된 파일을 다운 받아 12시간 동안의 예측차트를 확인해보세요.<br></p>");
+	        
 	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">더이상 이 보고서를 받지 않으시려면<br>아래 버튼을 눌러 이메일 정보를 삭제하십시오..<br></p>");
 	        bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> <tr> <td align='center' bgcolor='#ff4444' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + deleteLink + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>수신거부</a> </td> </tr> </table>");
 	        bodyHtml.append("<div style=\"border-top: 1px solid #DDD; padding: 5px;\"><p style=\"font-size: 12px; line-height: 21px; color: #777; margin: 0;\">도움이 필요하시면 <a href=\"https://www.projectwwtp.kro.kr/support\" style=\"color: #3498db; text-decoration: none;\">고객지원</a>으로 문의 바랍니다.</p></div>");
 	        bodyHtml.append("</div>");
-	        // 첨부 HTML: 각 차트 제목 1번만 출력
-	        StringBuilder chartHtml = new StringBuilder();
-	        chartHtml.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>FlowWater Report Chart</title>");
-	        chartHtml.append("<style>.tooltip {position:absolute;display:none;padding:6px 12px;background:#222;color:#fff;border-radius:4px;font-size:14px;z-index:1000;pointer-events:none;}</style>");
-	        chartHtml.append("</head><body style='position:relative;'>");
-	        chartHtml.append("<div class='tooltip' id='chartTooltip'></div>");
-	        if (flowSvg != null) {
-	            chartHtml.append("<h2>유입유량 예측</h2>").append(flowSvg);
-	        }
-	        for (String key : tmsKeys) {
-	            if (tmsSvgs.containsKey(key)) {
-	                chartHtml.append("<h2>").append(key).append(" 예측</h2>").append(tmsSvgs.get(key));
-	            }
-	        }
-	        chartHtml.append("<script>\n");
-	        chartHtml.append("document.querySelectorAll('svg').forEach(function(svg) {\n");
-	        chartHtml.append("  svg.addEventListener('mouseover', function(e) {\n");
-	        chartHtml.append("    if(e.target.classList.contains('chart-point')) {\n");
-	        chartHtml.append("      var tooltip = document.getElementById('chartTooltip');\n");
-	        chartHtml.append("      var value = e.target.getAttribute('data-value');\n");
-	        chartHtml.append("      var x = parseInt(e.target.getAttribute('data-x')) || e.target.cx.baseVal.value;\n");
-	        chartHtml.append("      var y = parseInt(e.target.getAttribute('data-y')) || e.target.cy.baseVal.value;\n");
-	        chartHtml.append("      tooltip.style.display = 'block';\n");
-	        chartHtml.append("      tooltip.textContent = value;\n");
-	        chartHtml.append("      var rect = svg.getBoundingClientRect();\n");
-	        chartHtml.append("      tooltip.style.left = (rect.left + x + window.scrollX + 10) + 'px';\n");
-	        chartHtml.append("      tooltip.style.top = (rect.top + y + window.scrollY - 30) + 'px';\n");
-	        chartHtml.append("    }\n");
-	        chartHtml.append("  });\n");
-	        chartHtml.append("  svg.addEventListener('mouseout', function(e) {\n");
-	        chartHtml.append("    if(e.target.classList.contains('chart-point')) {\n");
-	        chartHtml.append("      var tooltip = document.getElementById('chartTooltip');\n");
-	        chartHtml.append("      tooltip.style.display = 'none';\n");
-	        chartHtml.append("    }\n");
-	        chartHtml.append("  });\n");
-	        chartHtml.append("});\n");
-	        chartHtml.append("</script>");
-	        chartHtml.append("</body></html>");
-	        String chartFileName = "chart_report_" + timeStamp + ".html";
 	        Email from = new Email(fromEmail);
 	        Email to = new Email(member.getUserEmail());
 	        Content content = new Content("text/html", bodyHtml.toString());
 	        Mail mail = new Mail(from, subject, to, content);
-	        Attachments attachment = new Attachments();
-	        attachment.setContent(Base64.getEncoder().encodeToString(chartHtml.toString().getBytes(StandardCharsets.UTF_8)));
-	        attachment.setFilename(chartFileName);
-	        attachment.setType("text/html");
-	        attachment.setDisposition("attachment");
-	        mail.addAttachments(attachment);
+	        // 첨부파일 제거 (html 첨부 X)
 	        Request request = new Request();
 	        request.setMethod(Method.POST);
 	        request.setEndpoint("mail/send");
@@ -325,6 +273,95 @@ public class MailService {
 	}
 	
 	/**
+	 * 차트 HTML 파일을 생성하여 서버에 저장하고 파일명을 반환
+	 * @param tmsList TMS 데이터
+	 * @param flowList 유입유량 데이터
+	 * @param timeStamp 차트 파일명용 타임스탬프
+	 * @return 저장된 파일명 (예: chart_report_20260318.html)
+	 */
+	public String makeChartFile(List<TmsPredict> tmsList, List<FlowPredict> flowList, String timeStamp) {
+        try {
+            HashMap<String, String> tmsSvgs = new HashMap<>();
+            String flowSvg = generateSvgChartWithTooltip(flowList, java.util.Arrays.asList("flow"), true, "유입유량 예측");
+            String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+            for (String key : tmsKeys) {
+                String tmsSvg = generateSvgChartWithTooltip(tmsList, java.util.Arrays.asList(key), false, key + " 예측");
+                tmsSvgs.put(key, tmsSvg);
+            }
+            StringBuilder chartHtml = new StringBuilder();
+            chartHtml.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>FlowWater Report Chart</title>");
+            chartHtml.append("<style>.tooltip {position:absolute;display:none;padding:6px 12px;background:#222;color:#fff;border-radius:4px;font-size:14px;z-index:1000;pointer-events:none;}</style>");
+            chartHtml.append("</head><body style='position:relative;'>");
+            chartHtml.append("<div class='tooltip' id='chartTooltip'></div>");
+            if (flowSvg != null) {
+                chartHtml.append("<h2>유입유량 예측</h2>").append(flowSvg);
+            }
+            for (String key : tmsKeys) {
+                if (tmsSvgs.containsKey(key)) {
+                    chartHtml.append("<h2>").append(key).append(" 예측</h2>").append(tmsSvgs.get(key));
+                }
+            }
+            chartHtml.append("<script>\n");
+            chartHtml.append("document.querySelectorAll('svg').forEach(function(svg) {\n");
+            chartHtml.append("  svg.addEventListener('mouseover', function(e) {\n");
+            chartHtml.append("    if(e.target.classList.contains('chart-point')) {\n");
+            chartHtml.append("      var tooltip = document.getElementById('chartTooltip');\n");
+            chartHtml.append("      var value = e.target.getAttribute('data-value');\n");
+            chartHtml.append("      var x = parseInt(e.target.getAttribute('data-x')) || e.target.cx.baseVal.value;\n");
+            chartHtml.append("      var y = parseInt(e.target.getAttribute('data-y')) || e.target.cy.baseVal.value;\n");
+            chartHtml.append("      tooltip.style.display = 'block';\n");
+            chartHtml.append("      tooltip.textContent = value;\n");
+            chartHtml.append("      var rect = svg.getBoundingClientRect();\n");
+            chartHtml.append("      tooltip.style.left = (rect.left + x + window.scrollX + 10) + 'px';\n");
+            chartHtml.append("      tooltip.style.top = (rect.top + y + window.scrollY - 30) + 'px';\n");
+            chartHtml.append("    }\n");
+            chartHtml.append("  });\n");
+            chartHtml.append("  svg.addEventListener('mouseout', function(e) {\n");
+            chartHtml.append("    if(e.target.classList.contains('chart-point')) {\n");
+            chartHtml.append("      var tooltip = document.getElementById('chartTooltip');\n");
+            chartHtml.append("      tooltip.style.display = 'none';\n");
+            chartHtml.append("    }\n");
+            chartHtml.append("  });\n");
+            chartHtml.append("});\n");
+            chartHtml.append("</script>");
+            chartHtml.append("</body></html>");
+            String chartFileName = "chart_report_" + timeStamp + ".html";
+            File directory = new File(chartSavePath);
+            if (!directory.exists()) directory.mkdirs();
+            File file = new File(directory, chartFileName);
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(chartHtml.toString().getBytes(StandardCharsets.UTF_8));
+                fos.flush();
+            }
+            
+            // PNG 파일 저장 (유입유량)
+            if (flowSvg != null) {
+                byte[] flowPng = convertSvgToPngBytes(flowSvg);
+                if (flowPng != null && flowPng.length > 0) {
+                    String flowPngName = "chart_flow_" + timeStamp + ".png";
+                    savePngToLocalFile(flowPng, flowPngName);
+                }
+            }
+            // PNG 파일 저장 (TMS별)
+            for (String key : tmsKeys) {
+                String tmsSvg = tmsSvgs.get(key);
+                if (tmsSvg != null) {
+                    byte[] tmsPng = convertSvgToPngBytes(tmsSvg);
+                    if (tmsPng != null && tmsPng.length > 0) {
+                        String tmsPngName = "chart_" + key.toLowerCase() + "_" + timeStamp + ".png";
+                        savePngToLocalFile(tmsPng, tmsPngName);
+                    }
+                }
+            }
+            
+            return chartFileName;
+        } catch (Exception e) {
+            logService.addErrorLog("MailService.java", "makeChartFile()", e.getMessage());
+            return null;
+        }
+    }
+	
+	/**
 	 * SVG 차트 이미지를 생성하는 정적 메서드
 	 * @param data 데이터 포인트 리스트
 	 * @param keys 데이터 키 (TOC, PH, SS 등)
@@ -332,6 +369,7 @@ public class MailService {
 	 * @param title 차트 제목
 	 * @return SVG 문자열
 	 */
+/*	
 	private String generateSvgChart(List<? extends Object> data, List<String> keys, boolean isSingle, String title) {
 		int width = 1000;
 		int height = 350;
@@ -492,7 +530,7 @@ public class MailService {
 		svg.append("</svg>\n");
 		return svg.toString();
 	}
-	
+*/	
 	private double calculateYAxisUnit(double range) {
 		if (range <= 1) return 0.1;
 		else if (range <= 5) return 0.5;
@@ -630,6 +668,7 @@ public class MailService {
 	 * @param tmsList TMS 데이터
 	 * @param flowList 유입유량 데이터
 	 */
+/*	
 	public void sendEmailWithChartAsUrl(Member member, String subject, String bodyHtml, 
 										List<TmsPredict> tmsList, List<FlowPredict> flowList,
 										String fileName, String chart, String timeStamp) {
@@ -698,7 +737,7 @@ public class MailService {
 			logService.addMailLog(member, type, errorMsg);	
 		}
 	}
-	
+*/	
 	/**
 	 * 로컬 파일 경로가 포함된 메일 본문 생성
 	 * @param bodyHtml 기본 메일 본문
@@ -706,6 +745,7 @@ public class MailService {
 	 * @param tmsPaths TMS 차트 파일명 맵
 	 * @return 서버 URL이 포함된 HTML
 	 */
+/*	
 	private String generateChartBodyWithUrl(String bodyHtml, String flowPath, HashMap<String, String> tmsPaths) {
 		StringBuilder html = new StringBuilder();
 		
@@ -756,12 +796,13 @@ public class MailService {
 		
 		return html.toString();
 	}
-	
+*/	
 	/**
 	 * 메일 본문에서 h1 태그까지의 헤더 부분 추출
 	 * @param bodyHtml 전체 메일 본문
 	 * @return h1 태그를 포함한 헤더 부분
 	 */
+/*	
 	private String extractHeaderBeforeCharts(String bodyHtml) {
 		int h1EndIndex = bodyHtml.indexOf("</h1>");
 		if (h1EndIndex == -1) {
@@ -769,12 +810,13 @@ public class MailService {
 		}
 		return bodyHtml.substring(0, h1EndIndex + 5); // </h1> 포함
 	}
-	
+*/	
 	/**
 	 * 메일 본문에서 h1 태그 다음부터의 푸터 부분 추출
 	 * @param bodyHtml 전체 메일 본문
 	 * @return h1 태그 이후의 나머지 내용
 	 */
+/*	
 	private String extractFooterAfterCharts(String bodyHtml) {
 		int h1EndIndex = bodyHtml.indexOf("</h1>");
 		if (h1EndIndex == -1) {
@@ -782,7 +824,7 @@ public class MailService {
 		}
 		return bodyHtml.substring(h1EndIndex + 5); // </h1> 이후부터
 	}
-	
+*/	
 	/**
 	 * PNG 이미지를 로컬 파일로 저장
 	 * @param pngBytes PNG 이미지 바이트 배열

@@ -553,8 +553,8 @@ public class DashBoardController {
 				List<TmsPredict> tmsList = tmsService.findPredictList(now, end);
 				List<FlowPredict> flowList = flowService.findPredictList(now, end);
 				String timeStamp = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-				String fileName = "chart" + timeStamp + ".html";
-
+				// 첨부용 차트 파일을 먼저 생성
+				String fileName = mailService.makeChartFile(tmsList, flowList, timeStamp);
 				mailService.sendReportMail(recvMember, tmsList, flowList, timeStamp, fileName);
 			}catch(Exception e) {
 				e.printStackTrace();

@@ -55,20 +55,23 @@ public class ChartController {
 				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 			}
 			
-			// 파일 타입 확인
-			if (!filename.toLowerCase().endsWith(".png")) {
+			// 파일 타입 확인 및 Content-Type 결정
+			MediaType contentType;
+			if (filename.toLowerCase().endsWith(".png")) {
+				contentType = MediaType.IMAGE_PNG;
+			} else if (filename.toLowerCase().endsWith(".html")) {
+				contentType = MediaType.TEXT_HTML;
+			} else {
 				log.warn("[Chart] Invalid file extension: {}", filename);
 				return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
 			}
-			
+
 			Resource resource = new FileSystemResource(file);
-			
-			log.info("[Chart] Returning chart image: {}", filename);
-			
+			log.info("[Chart] Returning chart file: {}", filename);
 			return ResponseEntity.ok()
-					.header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
-					.contentType(MediaType.IMAGE_PNG)
-					.body(resource);
+				.header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+				.contentType(contentType)
+				.body(resource);
 					
 		} catch (Exception e) {
 			log.error("[Chart] Error retrieving chart image: {}", filename, e);
