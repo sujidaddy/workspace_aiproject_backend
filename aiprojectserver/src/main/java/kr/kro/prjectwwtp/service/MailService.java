@@ -22,9 +22,9 @@ import org.springframework.stereotype.Service;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
-import com.google.zxing.qrcode.QRCodeWriter;
-import com.google.zxing.common.BitMatrix;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
 import com.sendgrid.Method;
 import com.sendgrid.Request;
 import com.sendgrid.Response;
@@ -223,12 +223,15 @@ public class MailService {
             bodyHtml.append("<span style=\"color: #3498db;\">" + subject + "</span> 안내</h1>");
             bodyHtml.append("<div style=\"margin-top:30px;\">");
             String chartHtmlUrl = chartServerUrl + "/" + chartFileName;
-            String qrBase64 = generateQRCodeBase64(chartHtmlUrl);
+            String qrFileName = "chart_qr_" + timeStamp + ".png";
+            String savedQrFile = saveQRCodeImage(chartHtmlUrl, qrFileName);
             bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">아래 버튼을 클릭해 12시간 동안의 예측차트를 확인해보세요.<br>");
             bodyHtml.append("<div style='display:flex;align-items:center;justify-content:center;margin:30px 5px 40px;'>");
-            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin:0;'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
-            if (qrBase64 != null) {
-                bodyHtml.append("<div style='margin-left:20px;text-align:center;'><img src='data:image/png;base64," + qrBase64 + "' alt='QR Code' style='width:120px;height:120px;border:1px solid #ddd;border-radius:4px;'/><br><span style='font-size:12px;color:#888;'>차트 QR코드</span></div>");
+            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin:0;'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff; height:45px; vertical-align:middle;'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
+            if (savedQrFile != null) {
+                bodyHtml.append("<div style='margin-left:20px;text-align:center;display:flex;align-items:center;height:120px;'>");
+                bodyHtml.append("<img src='" + chartServerUrl + "/" + qrFileName + "' alt='QR Code' style='width:120px;height:120px;border:1px solid #ddd;border-radius:4px;'/><br><span style='font-size:12px;color:#888;'>차트 QR코드</span>");
+                bodyHtml.append("</div>");
             }
             bodyHtml.append("</div>");
             bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 30px; padding: 0 5px;\">아래 차트 이미지를 확인해보세요.<br></p>");
@@ -659,6 +662,23 @@ public class MailService {
 			return new byte[0];
 		}
 	}
+	
+	/**
+     * QR코드 이미지를 chartSavePath에 저장하는 함수
+     */
+    private String saveQRCodeImage(String url, String fileName) {
+        try {
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrCodeWriter.encode(url, BarcodeFormat.QR_CODE, 200, 200);
+            BufferedImage qrImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
+            File qrFile = new File(chartSavePath, fileName);
+            javax.imageio.ImageIO.write(qrImage, "png", qrFile);
+            return fileName;
+        } catch (Exception e) {
+            logService.addErrorLog("MailService.java", "saveQRCodeImage()", e.getMessage());
+            return null;
+        }
+    }
 	
 	private String generateQRCodeBase64(String url) {
         try {
