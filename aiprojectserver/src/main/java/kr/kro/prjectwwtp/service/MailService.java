@@ -2,6 +2,7 @@ package kr.kro.prjectwwtp.service;
 
 
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -9,6 +10,7 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 
@@ -18,6 +20,11 @@ import org.apache.batik.transcoder.image.PNGTranscoder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.WriterException;
+import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.sendgrid.Method;
 import com.sendgrid.Request;
 import com.sendgrid.Response;
@@ -202,75 +209,68 @@ public class MailService {
 	 * @param fileName 첨부파일명
 	 */
 	public void sendReportMail(Member member, List<TmsPredict> tmsList, List<FlowPredict> flowList, String timeStamp, String fileName) {
-	    String type = "sendReport";
-	    String errorMsg = null;
-	    try {
-	        // 첨부용 차트 파일을 서버에서 읽어 첨부
-	        String chartFileName = fileName != null ? fileName : ("chart_report_" + timeStamp + ".html");
-	        File chartFile = new File(chartSavePath, chartFileName);
-	        byte[] fileBytes = null;
-	        if (chartFile.exists()) {
-	            fileBytes = java.nio.file.Files.readAllBytes(chartFile.toPath());
-	        }
-	        // 본문 구성 (차트 이미지 포함)
-	        String subject = "Report From FlowWater";
-	        String userId = member.getUserId();
-	        String email = member.getUserEmail();
-	        String deleteLink = emailAPIDomain + "/api/member/deleteEmail?userId="+userId+"&email="+email;
-	        StringBuilder bodyHtml = new StringBuilder();
-	        bodyHtml.append("<div style=\"font-family: 'Apple SD Gothic Neo', 'sans-serif' !important; width: 540px; border-top: 4px solid #3498db; margin: 100px auto; padding: 30px 0; box-sizing: border-box;\">");
-	        bodyHtml.append("<h1 style=\"margin: 0; padding: 0 5px; font-size: 28px; font-weight: 400;\">");
-	        bodyHtml.append("<span style=\"color: #3498db;\">" + subject + "</span> 안내</h1>");
-	        bodyHtml.append("<div style=\"margin-top:30px;\">");
-	        String chartFileAttachName = chartFileName;
-	        String chartHtmlUrl = chartServerUrl + "/" + chartFileName;
-	        // 상단 타이틀 바로 아래에 버튼 배치
-	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">아래 버튼을 클릭해 12시간 동안의 예측차트를 확인해보세요.<br>");
-	        bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
-	        // 안내 및 차트 이미지
-	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 30px; padding: 0 5px;\">아래 차트 이미지를 확인해보세요.<br></p>");
-	        // 차트 이미지 삽입
-	        String flowPng = "chart_flow_" + timeStamp + ".png";
-	        if (new java.io.File(chartSavePath, flowPng).exists()) {
-	            bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>유입유량 예측</b><br><img src=\"")
-	                    .append(chartServerUrl).append("/").append(flowPng)
-	                    .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
-	        }
-	        String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
-	        for (String key : tmsKeys) {
-	            String tmsPng = "chart_" + key.toLowerCase() + "_" + timeStamp + ".png";
-	            if (new java.io.File(chartSavePath, tmsPng).exists()) {
-	                bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>")
-	                        .append(key).append(" 예측</b><br><img src=\"")
-	                        .append(chartServerUrl).append("/").append(tmsPng)
-	                        .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
-	            }
-	        }
-	        bodyHtml.append("</div>");
-	        
-	        bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">더이상 이 보고서를 받지 않으시려면<br>아래 버튼을 눌러 이메일 정보를 삭제하십시오..<br></p>");
-	        bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> <tr> <td align='center' bgcolor='#ff4444' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + deleteLink + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>수신거부</a> </td> </tr> </table>");
-	        bodyHtml.append("<div style=\"border-top: 1px solid #DDD; padding: 5px;\"><p style=\"font-size: 12px; line-height: 21px; color: #777; margin: 0;\">도움이 필요하시면 <a href=\"https://www.projectwwtp.kro.kr/support\" style=\"color: #3498db; text-decoration: none;\">고객지원</a>으로 문의 바랍니다.</p></div>");
-	        bodyHtml.append("</div>");
-	        Email from = new Email(fromEmail);
-	        Email to = new Email(member.getUserEmail());
-	        Content content = new Content("text/html", bodyHtml.toString());
-	        Mail mail = new Mail(from, subject, to, content);
-	        // 첨부파일 제거 (html 첨부 X)
-	        Request request = new Request();
-	        request.setMethod(Method.POST);
-	        request.setEndpoint("mail/send");
-	        request.setBody(mail.build());
-	        Response response = sendGrid.api(request);
-	        if(response.getStatusCode() != 202)
-	            errorMsg = response.getBody();
-	    } catch (Exception e) {
-	        errorMsg = e.getMessage();
-	        logService.addErrorLog("MailService.java", "sendReportMail()", e.getMessage());
-	    } finally {
-	        logService.addMailLog(member, type, errorMsg);
-	    }
-	}
+        String type = "sendReport";
+        String errorMsg = null;
+        try {
+            String chartFileName = fileName != null ? fileName : ("chart_report_" + timeStamp + ".html");
+            String subject = "Report From FlowWater";
+            String userId = member.getUserId();
+            String email = member.getUserEmail();
+            String deleteLink = emailAPIDomain + "/api/member/deleteEmail?userId="+userId+"&email="+email;
+            StringBuilder bodyHtml = new StringBuilder();
+            bodyHtml.append("<div style=\"font-family: 'Apple SD Gothic Neo', 'sans-serif' !important; width: 540px; border-top: 4px solid #3498db; margin: 100px auto; padding: 30px 0; box-sizing: border-box;\">");
+            bodyHtml.append("<h1 style=\"margin: 0; padding: 0 5px; font-size: 28px; font-weight: 400;\">");
+            bodyHtml.append("<span style=\"color: #3498db;\">" + subject + "</span> 안내</h1>");
+            bodyHtml.append("<div style=\"margin-top:30px;\">");
+            String chartHtmlUrl = chartServerUrl + "/" + chartFileName;
+            String qrBase64 = generateQRCodeBase64(chartHtmlUrl);
+            bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">아래 버튼을 클릭해 12시간 동안의 예측차트를 확인해보세요.<br>");
+            bodyHtml.append("<div style='display:flex;align-items:center;justify-content:center;margin:30px 5px 40px;'>");
+            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin:0;'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
+            if (qrBase64 != null) {
+                bodyHtml.append("<div style='margin-left:20px;text-align:center;'><img src='data:image/png;base64," + qrBase64 + "' alt='QR Code' style='width:120px;height:120px;border:1px solid #ddd;border-radius:4px;'/><br><span style='font-size:12px;color:#888;'>차트 QR코드</span></div>");
+            }
+            bodyHtml.append("</div>");
+            bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 30px; padding: 0 5px;\">아래 차트 이미지를 확인해보세요.<br></p>");
+            String flowPng = "chart_flow_" + timeStamp + ".png";
+            if (new java.io.File(chartSavePath, flowPng).exists()) {
+                bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>유입유량 예측</b><br><img src=\"")
+                        .append(chartServerUrl).append("/").append(flowPng)
+                        .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
+            }
+            String[] tmsKeys = {"TOC", "PH", "SS", "FLUX", "TN", "TP"};
+            for (String key : tmsKeys) {
+                String tmsPng = "chart_" + key.toLowerCase() + "_" + timeStamp + ".png";
+                if (new java.io.File(chartSavePath, tmsPng).exists()) {
+                    bodyHtml.append("<div style=\"margin-bottom: 30px;\"><b>")
+                            .append(key).append(" 예측</b><br><img src=\"")
+                            .append(chartServerUrl).append("/").append(tmsPng)
+                            .append("\" style=\"width:100%;max-width:500px;border:1px solid #ddd;border-radius:4px;\"></div>");
+                }
+            }
+            bodyHtml.append("</div>");
+            bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">더이상 이 보고서를 받지 않으시려면<br>아래 버튼을 눌러 이메일 정보를 삭제하십시오..<br></p>");
+            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin: 30px 5px 40px'> <tr> <td align='center' bgcolor='#ff4444' width='210' height='45' style='border-radius: 5px; color: #ffffff'> <a href='" + deleteLink + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>수신거부</a> </td> </tr> </table>");
+            bodyHtml.append("<div style=\"border-top: 1px solid #DDD; padding: 5px;\"><p style=\"font-size: 12px; line-height: 21px; color: #777; margin: 0;\">도움이 필요하시면 <a href=\"https://www.projectwwtp.kro.kr/support\" style=\"color: #3498db; text-decoration: none;\">고객지원</a>으로 문의 바랍니다.</p></div>");
+            bodyHtml.append("</div>");
+            Email from = new Email(fromEmail);
+            Email to = new Email(member.getUserEmail());
+            Content content = new Content("text/html", bodyHtml.toString());
+            Mail mail = new Mail(from, subject, to, content);
+            Request request = new Request();
+            request.setMethod(Method.POST);
+            request.setEndpoint("mail/send");
+            request.setBody(mail.build());
+            Response response = sendGrid.api(request);
+            if(response.getStatusCode() != 202)
+                errorMsg = response.getBody();
+        } catch (Exception e) {
+            errorMsg = e.getMessage();
+            logService.addErrorLog("MailService.java", "sendReportMail()", e.getMessage());
+        } finally {
+            logService.addMailLog(member, type, errorMsg);
+        }
+    }
 	
 	/**
 	 * 차트 HTML 파일을 생성하여 서버에 저장하고 파일명을 반환
@@ -659,6 +659,20 @@ public class MailService {
 			return new byte[0];
 		}
 	}
+	
+	private String generateQRCodeBase64(String url) {
+        try {
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrCodeWriter.encode(url, BarcodeFormat.QR_CODE, 200, 200);
+            BufferedImage qrImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(qrImage, "png", baos);
+            byte[] imageBytes = baos.toByteArray();
+            return Base64.getEncoder().encodeToString(imageBytes);
+        } catch (WriterException | java.io.IOException e) {
+            return null;
+        }
+    }
 	
 	/**
 	 * 로컬 저장 경로를 사용하여 차트 이미지를 메일에 포함시키는 메서드
