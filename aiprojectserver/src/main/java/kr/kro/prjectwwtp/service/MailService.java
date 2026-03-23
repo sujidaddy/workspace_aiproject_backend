@@ -226,13 +226,22 @@ public class MailService {
             String qrFileName = "chart_qr_" + timeStamp + ".png";
             String savedQrFile = saveQRCodeImage(chartHtmlUrl, qrFileName);
             bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 50px; padding: 0 5px;\">아래 버튼을 클릭해 12시간 동안의 예측차트를 확인해보세요.<br>");
-            bodyHtml.append("<div style='display:flex;align-items:center;justify-content:center;margin:30px 5px 40px;'>");
-            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin:0;'> <tr> <td align='center' bgcolor='#3498db' width='210' height='45' style='border-radius: 5px; color: #ffffff; height:45px; vertical-align:middle;'> <a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>");
+            bodyHtml.append("<table cellspacing='0' cellpadding='0' border='0' style='margin:30px 5px 40px;'><tr>");
+            bodyHtml.append(
+            		"<td style='vertical-align:middle; padding-right:20px;'>" +   
+            		"<table cellspacing='0' cellpadding='0' border='0' style='margin:0;'>" + 
+            		" <tr> <td align='center' bgcolor='#3498db' width='210' height='45'" + 
+            		" style='border-radius: 5px; color: #ffffff; height:45px; vertical-align:middle;'> " + 
+            		"<a href='" + chartHtmlUrl + "' target='_blank' style='display: block; width: 210px; height: 45px; font-family: sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; line-height: 45px; text-align: center; font-weight: bold;'>예측차트 바로가기</a> </td> </tr> </table>" +
+            		"</td>");
             if (savedQrFile != null) {
-                bodyHtml.append("<div style='margin-left:20px;text-align:center;display:flex;align-items:center;height:120px;'>");
-                bodyHtml.append("<img src='" + chartServerUrl + "/" + qrFileName + "' alt='QR Code' style='width:120px;height:120px;border:1px solid #ddd;border-radius:4px;'/><br><span style='font-size:12px;color:#888;'>차트 QR코드</span>");
-                bodyHtml.append("</div>");
+                bodyHtml.append(
+                		"<td style='vertical-align:middle;text-align:center;'>" + 
+        				"<img src=\"" + chartServerUrl + "/" + qrFileName + "\" alt='QR Code' style='width:120px;height:120px;border:1px solid #ddd;border-radius:4px;display:block;'/>" + 
+        				"<span style='font-size:12px;color:#888;'>차트 QR코드</span>" + 
+        				"</td>");
             }
+            bodyHtml.append("</tr></table>");
             bodyHtml.append("</div>");
             bodyHtml.append("<p style=\"font-size: 16px; line-height: 26px; margin-top: 30px; padding: 0 5px;\">아래 차트 이미지를 확인해보세요.<br></p>");
             String flowPng = "chart_flow_" + timeStamp + ".png";
@@ -666,6 +675,7 @@ public class MailService {
 	/**
      * QR코드 이미지를 chartSavePath에 저장하는 함수
      */
+/*	
     private String saveQRCodeImage(String url, String fileName) {
         try {
             QRCodeWriter qrCodeWriter = new QRCodeWriter();
@@ -679,7 +689,29 @@ public class MailService {
             return null;
         }
     }
-	
+*/	
+	private String saveQRCodeImage(String url, String fileName) {
+	    try {
+	        QRCodeWriter qrCodeWriter = new QRCodeWriter();
+	        BitMatrix bitMatrix = qrCodeWriter.encode(url, BarcodeFormat.QR_CODE, 200, 200);
+	        BufferedImage qrImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
+	        File qrFile = new File(chartSavePath, fileName);
+	        javax.imageio.ImageIO.write(qrImage, "png", qrFile);
+	        
+	        // ✅ 실제 파일이 저장됐는지 확인 후 반환
+	        if (qrFile.exists() && qrFile.length() > 0) {
+	            System.out.println("[QR Save] Saved: " + qrFile.getAbsolutePath() + " (" + qrFile.length() + " bytes)");
+	            return fileName;
+	        } else {
+	            System.err.println("[QR Save] File not found after write: " + qrFile.getAbsolutePath());
+	            return null;
+	        }
+	    } catch (Exception e) {
+	        System.err.println("[QR Save] Error: " + e.getMessage());
+	        logService.addErrorLog("MailService.java", "saveQRCodeImage()", e.getMessage());
+	        return null;
+	    }
+	}
 	private String generateQRCodeBase64(String url) {
         try {
             QRCodeWriter qrCodeWriter = new QRCodeWriter();
