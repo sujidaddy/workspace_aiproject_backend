@@ -430,5 +430,13 @@ sudo journalctl | grep -i mail
 
 sudo mail -u admin
 
+\# git 설치
+
+sudo dnf install git -y
+git config --global user.name "Your Name"
+git config --global user.email "your-email@example.com"
+git config --list
+
+ssh-keygen -t ed25519 -C "your-email@example.com"
 
 
