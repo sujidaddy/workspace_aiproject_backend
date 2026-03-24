@@ -22,7 +22,7 @@ jobs:
       - name: Build with Maven
         run: |
           chmod +x aiprojectserver/mvnw
-    	  cd aiprojectserver && ./mvnw clean package -DskipTests
+          cd aiprojectserver && ./mvnw clean package -DskipTests
 
       # 2. 서버 폴더 생성 및 기존 파일 정리 (선택 사항)
       - name: Prepare Server Directory
