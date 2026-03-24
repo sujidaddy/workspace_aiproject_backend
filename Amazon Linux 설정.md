@@ -439,4 +439,10 @@ git config --list
 
 ssh-keygen -t ed25519 -C "your-email@example.com"
 
+github.com/계정명/레포지토리명/settings/secrtes/actions 에 HOST, USERNAME, SSH_KEY 추가
+github.com/settings/tokens에 'Generate new token(classic)'선택 후 ' Note 추가하고 repo, workflow 체크 하여 토큰 생성
+pc의 레포지토리 폴더에 git remote set-url origin https://<토큰>@github.com/계정명/레포지토리명.git 으로 내용 갱신
+.github/workflows/deply.yml 파일을 생성해서 push후의 처리 코드 추가
+
+
 

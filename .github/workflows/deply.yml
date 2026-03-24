@@ -44,3 +44,14 @@ jobs:
           source: "aiprojectserver/target/*.jar"
           target: "/home/ec2-user/workspace_wwtp/Spring"
           strip_components: 2  # aiprojectserver/target/ 둘 다 제거
+
+      # 4. SSH를 통해 서버에서 PM2 명령 실행
+      - name: Restart PM2 Application
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ec2-user
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /home/ec2-user/workspace_wwtp/Spring
+            pm2 restart FlowWater-server --update-env
